@@ -1,0 +1,26 @@
+name: Bug report
+description: Something isn't working as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you expected vs. what actually happened.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Logs / context
+      description: Relevant logs, commit SHA, or environment details.
+      render: shell

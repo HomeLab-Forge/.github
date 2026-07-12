@@ -1,0 +1,6 @@
+# Org-wide default code owners for every repository that lacks its own
+# CODEOWNERS. Owners are auto-requested for review on PRs; pair with a
+# "require review from Code Owners" ruleset to enforce.
+#
+# NOTE: adjust the handle below if your GitHub username/team differs.
+* @scepion1d
