@@ -15,11 +15,17 @@ on:
 permissions:
   contents: read
 
+env:
+  BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+  HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
 jobs:
   actionlint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - name: Install actionlint
         env:
           VERSION: "1.7.12"
@@ -33,13 +39,24 @@ jobs:
           install -m 0755 actionlint "$HOME/.local/bin/actionlint"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           rm -f actionlint actionlint.tar.gz
-      - name: Lint workflows
+      - name: Lint changed workflows
         run: |
           set -euo pipefail
-          if compgen -G '.github/workflows/*.y*ml' > /dev/null; then
-            actionlint -color
+          if git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            mapfile -t workflows < <(
+              git diff --name-only --diff-filter=ACMR "$BASE_SHA" "$HEAD_SHA" -- \
+                '.github/workflows/*.yml' '.github/workflows/*.yaml'
+            )
           else
-            echo "No workflow files to lint."
+            mapfile -t workflows < <(
+              git ls-tree -r --name-only "$HEAD_SHA" -- '.github/workflows' \
+                | grep -E '\.ya?ml$' || true
+            )
+          fi
+          if ((${#workflows[@]})); then
+            actionlint -color "${workflows[@]}"
+          else
+            echo "No changed workflow files to lint."
           fi
 
   gitleaks:
@@ -61,8 +78,15 @@ jobs:
           install -m 0755 gitleaks "$HOME/.local/bin/gitleaks"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           rm -f gitleaks gitleaks.tar.gz
-      - name: Scan working tree and history
-        run: gitleaks detect --source . --redact --no-banner --verbose
+      - name: Scan changed commits
+        run: |
+          set -euo pipefail
+          if git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            gitleaks detect --source . --redact --no-banner --verbose \
+              --log-opts="${BASE_SHA}..${HEAD_SHA}"
+          else
+            gitleaks detect --source . --redact --no-banner --verbose --no-git
+          fi
 
   assign-owner:
     if: github.event_name == 'pull_request' && (github.event.action == 'opened' || github.event.action == 'reopened')
