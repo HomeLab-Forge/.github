@@ -9,6 +9,7 @@ name: Required CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
 
@@ -88,20 +89,41 @@ jobs:
             gitleaks detect --source . --redact --no-banner --verbose --no-git
           fi
 
-  assign-owner:
-    if: github.event_name == 'pull_request' && (github.event.action == 'opened' || github.event.action == 'reopened')
+  route-owner:
+    if: >-
+      github.event_name == 'pull_request'
+      && (github.event.action == 'opened'
+      || github.event.action == 'reopened'
+      || github.event.action == 'ready_for_review')
     runs-on: ubuntu-latest
     continue-on-error: true
     permissions:
       issues: write
       pull-requests: write
     steps:
-      - name: Assign the PR to the org owner
+      - name: Request owner review or assign the PR
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_DRAFT: ${{ github.event.pull_request.draft }}
+          OWNER_LOGIN: scepion1d
         run: |
+          set -euo pipefail
+
+          if [[ "$PR_AUTHOR" != "$OWNER_LOGIN" && "$PR_DRAFT" != "true" ]]; then
+            if gh api --method POST \
+              -H "Accept: application/vnd.github+json" \
+              "/repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/requested_reviewers" \
+              -f "reviewers[]=${OWNER_LOGIN}"; then
+              exit 0
+            fi
+            echo "::notice::Could not request owner review; assigning the PR instead."
+          elif [[ "$PR_AUTHOR" == "$OWNER_LOGIN" ]]; then
+            echo "::notice::GitHub does not allow authors to review their own PR; assigning it instead."
+          fi
+
           gh api --method POST \
             -H "Accept: application/vnd.github+json" \
             "/repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/assignees" \
-            -f "assignees[]=scepion1d" || true
+            -f "assignees[]=${OWNER_LOGIN}"
